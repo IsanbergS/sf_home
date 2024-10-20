@@ -175,12 +175,65 @@ for chunk in pd.read_csv('./train_part_0.csv', dtype=dtypes, chunksize=chunksize
 
 # Подсчет общего количества уникальных пользователей
 print(f'Количество уникальных пользователей: {len(unique_users)}')
-
 # Загрузка всей выборки данных
 data = pd.read_csv('./train_part_0.csv')
 
-# Среднее время на ответ для каждого пользователя
-average_time_per_user = data.groupby('user_id')['prior_question_elapsed_time'].mean()
+# Общее время, проведенное за обучением, на основе prior_question_elapsed_time для каждого пользователя
+time_spent_per_user = data[data['prior_question_elapsed_time'].notna()].groupby('user_id')['prior_question_elapsed_time'].sum()
+
+# Перевод времени из миллисекунд в часы
+time_spent_per_user_hours = time_spent_per_user / (1000 * 60 * 60)
+
+# Расчет среднего времени, проведенного пользователем за обучением в часах
+average_time_spent_hours = time_spent_per_user_hours.mean()
+print(f'\nСреднее время, проведенное пользователем за обучением: {average_time_spent_hours:.2f} часов')
+
+# Добавление информации о времени на обучение в исходный датафрейм
+data = data.merge(time_spent_per_user_hours.rename('total_time_spent_hours'), on='user_id')
+
+# Разделение пользователей на две группы: меньше и больше среднего времени
+less_time_users = data[data['total_time_spent_hours'] < average_time_spent_hours]
+more_time_users = data[data['total_time_spent_hours'] >= average_time_spent_hours]
+
+# Средний процент правильных ответов для пользователей, которые занимались меньше среднего времени
+less_time_correct_answers = less_time_users[less_time_users['answered_correctly'] != -1]['answered_correctly'].mean() * 100
+print(f'Средний процент правильных ответов для пользователей, которые занимались меньше среднего времени: {less_time_correct_answers:.2f}%')
+
+# Средний процент правильных ответов для пользователей, которые занимались больше среднего времени
+more_time_correct_answers = more_time_users[more_time_users['answered_correctly'] != -1]['answered_correctly'].mean() * 100
+print(f'Средний процент правильных ответов для пользователей, которые занимались больше среднего времени: {more_time_correct_answers:.2f}%')
+
+
+# Построение гистограммы распределения времени, проведенного пользователями за обучением
+plt.figure(figsize=(12, 6))
+plt.hist(time_spent_per_user_hours, bins=30, color='skyblue', edgecolor='black', alpha=0.7)
+plt.axvline(average_time_spent_hours, color='red', linestyle='--', linewidth=2, label=f'Среднее время: {average_time_spent_hours:.2f} часов')
+plt.xlabel('Время, проведенное за обучением (часы)')
+plt.ylabel('Количество пользователей')
+plt.title('Распределение времени, проведенного пользователями за обучением (в часах)')
+plt.legend()
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.show()
+
+# Построение столбчатой диаграммы для сравнения результатов
+plt.figure(figsize=(10, 6))
+groups = ['Меньше среднего времени', 'Больше среднего времени']
+correct_answers = [less_time_correct_answers, more_time_correct_answers]
+plt.bar(groups, correct_answers, color=['skyblue', 'lightgreen'], edgecolor='black')
+plt.xlabel('Группа пользователей')
+plt.ylabel('Средний процент правильных ответов (%)')
+plt.title('Сравнение среднего процента правильных ответов для пользователей, занимавшихся меньше и больше среднего времени')
+plt.ylim(0, 100)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.show()
+
+
+
+
+
+
+
+
 
 # Частота правильных ответов для каждого пользователя
 questions_only = data[data['answered_correctly'] != -1]
@@ -213,7 +266,7 @@ top_10_users_df['correctness_percentage'] = top_10_users_df['correctness_percent
 top_10_users_df.index = top_10_users_df.index + 1
 
 # Вывод таблицы в Jupyter
-print(top_10_users_df)
+display(top_10_users_df)
 
 # Влияние лекций на правильность ответов
 correctness_after_lecture = data[(data['prior_question_had_explanation'] == True) & (data['answered_correctly'] != -1)]['answered_correctly'].mean()
@@ -241,10 +294,9 @@ print(f'Среднее время на ответ: {average_time_overall:.2f} м
 lectures_only = data[data['content_type_id'] == 1]
 # Количество лекций на пользователя
 lectures_viewed_per_user = lectures_only.groupby('user_id')['content_id'].count()
-print(lectures_viewed_per_user)
 # Среднее количество лекций на пользователя
 average_lectures_viewed = lectures_viewed_per_user.mean()
-print(f'Среднее количество лекций на пользователя: {average_lectures_viewed:.2f}')
+print(f'Сколько лекций в среднем просматривает каждый пользователь: {average_lectures_viewed:.2f}')
 
 # Подсчет просмотров каждой лекции
 lecture_view_counts = lectures_only['content_id'].value_counts()
@@ -255,13 +307,13 @@ lecture_view_distribution = lecture_view_counts.value_counts().sort_index()
 # Среднее количество просмотров лекций
 average_views = lecture_view_counts.mean()
 
-# Построение гистограммы
+# Построение вертикальной гистограммы
 plt.figure(figsize=(12, 6))
 plt.bar(lecture_view_distribution.index, lecture_view_distribution.values, color='skyblue', edgecolor='black', label='Количество лекций')
 plt.axvline(average_views, color='red', linestyle='--', linewidth=2, label=f'Среднее количество просмотров: {average_views:.2f}')
 plt.xlabel('Количество просмотров лекции')
 plt.ylabel('Количество лекций')
-plt.title('Распределение количества просмотров лекций')
+plt.title('Распределение просмотров лекций')
 plt.xticks(lecture_view_distribution.index)
 plt.legend()
 plt.grid(axis='y', linestyle='--', alpha=0.7)
@@ -277,28 +329,6 @@ print(f'Средний процент правильных ответов без
 # Влияние лекций на правильность ответов
 print(f'Средний процент правильных ответов после лекций: {correctness_after_lecture * 100:.2f}%')
 
-# Среднее общее время, проведенное пользователем за обучением
-average_study_time = total_study_time_per_user.mean()
-print(f'Среднее общее время, проведенное пользователем за обучением: {average_study_time:.2f} миллисекунд')
-
-# Среднее количество вопросов в группе для пользователя
-average_questions_per_group = questions_per_group_per_user.mean()
-print(f'Среднее количество вопросов в группе для пользователя: {average_questions_per_group:.2f}')
-
 # Среднее количество вопросов для одного пользователя
 average_questions_per_user_value = questions_per_user.mean()
 print(f'Среднее количество вопросов для одного пользователя: {average_questions_per_user_value:.2f}')
-
-# Максимальное и минимальное количество вопросов для одного пользователя
-max_questions_per_user = questions_per_user.max()
-min_questions_per_user = questions_per_user.min()
-print(f'Максимальное количество вопросов для одного пользователя: {max_questions_per_user}')
-print(f'Минимальное количество вопросов для одного пользователя: {min_questions_per_user}')
-
-# Пользователь с лучшим результатом
-best_user_id = correctness_per_user.idxmax()
-print(f'Пользователь с лучшим результатом (максимальный процент правильных ответов): user_id {best_user_id}')
-
-# Количество вопросов пользователя с лучшим результатом
-best_user_questions_count = questions_per_user.get(best_user_id, 0)
-print(f'Количество вопросов пользователя с лучшим результатом: {best_user_questions_count}')
